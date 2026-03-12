@@ -1,0 +1,109 @@
+import numpy as np
+from scipy.stats import gaussian_kde, norm
+import matplotlib.pyplot as plt
+
+# -----------------------------
+# Generate initial samples
+# -----------------------------
+
+N = 5000
+
+# physical parameters (lambda samples) (initial parameter samples)
+lam = np.random.uniform(0, 3, N)
+
+# stochastic variables (unknown in practice)
+xi = np.random.normal(0, 1, N)
+
+# stochastic forward model
+def Q(l, x):
+    """
+    @param: l, lambda
+    @param: x, stochastic variables
+    """
+    return l**2 + x
+
+# predicted outputs
+q = Q(lam, xi)
+
+# -----------------------------
+# Observed data PDF
+# -----------------------------
+
+def pi_obs(q):
+    """
+    @param: q, obeserved data
+    """
+    return norm.pdf(q, loc=4, scale=1)
+
+# -----------------------------
+# Estimate predicted density using KDE
+# p_predict is the push-forward of the initial distribution through the model Q
+# in practice, we almost never know p_init analytically, so we cannot compute the integral
+# exactly. Instead, we sample from the initial distribution, run the forward model on those 
+# samples and then approximate the predicted density from the outputs (by GKDE).
+# -----------------------------
+
+def pi_predict(q):
+    kde = gaussian_kde(q)
+    return kde(q)
+
+# -----------------------------
+# Compute r_hat values and estimate M
+# -----------------------------
+
+r_hat = pi_obs(q) / pi_predict(q)  # numpy array
+M = np.max(r_hat)
+
+# -----------------------------
+# Rejection sampling
+# -----------------------------
+
+accepted_lambda = []
+
+for i in range(N):
+
+    y = np.random.uniform(0, 1)  # unif
+    eta = r_hat[i] / M  # compute ratio
+
+    if y < eta:  # rejection sampling
+        accepted_lambda.append(lam[i])
+
+accepted_lambda = np.array(accepted_lambda)
+
+# -----------------------------
+# Results
+# -----------------------------
+
+print("Initial samples:", len(lam))
+print("Accepted samples:", len(accepted_lambda))
+
+# -----------------------------
+# Visualization
+# -----------------------------
+
+plt.hist(lam, bins=40, density=True, alpha=0.5, label="Initial λ", color = "blue")
+plt.hist(accepted_lambda, bins=40, density=True, alpha=0.7, label="Updated λ", color="orange")
+plt.legend()
+plt.title("Initial vs Updated Parameter Distribution")
+plt.xlabel("λ")
+plt.ylabel("Density")
+plt.show()
+
+plt.figure(figsize=(10,6))
+
+# Histogram of initial lambda
+plt.hist(lam, bins=40, density=True, alpha=0.5, label="Initial λ", color="blue")
+
+# Histogram of updated lambda
+plt.hist(accepted_lambda, bins=40, density=True, alpha=0.7, label="Updated λ", color="orange")
+
+# Optional: overlay true "observed" distribution in lambda-space
+# Approximate by filtering initial lambda that produce outputs near observation mean
+obs_lambda_approx = lam[np.abs(q - 4) < 1.0]  # lambda whose output is within 1 std of obs
+plt.hist(obs_lambda_approx, bins=40, density=True, alpha=0.5, color='green', label="Approx λ consistent with obs")
+
+plt.legend()
+plt.title("Initial vs Updated Parameter Distribution")
+plt.xlabel("λ")
+plt.ylabel("Density")
+plt.show()
